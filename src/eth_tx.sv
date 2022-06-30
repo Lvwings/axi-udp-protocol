@@ -9,7 +9,7 @@
  Language   : Verilog 2001
  -----------------------------------------------------------------------------*/
 
- module udp_tx #(
+ module eth_tx #(
         // UDP parameters
         parameter LOCAL_IP                  =   32'hC0A8_006E,
         parameter LOCAL_MAC                 =   48'hABCD_1234_5678,
@@ -60,6 +60,7 @@
         input                               rgmii_tready,
 
     // arp 
+        input                               trig_arp_tx,
         input   [31:0]                      target_ip,
         input   [47:0]                      target_mac         
      
@@ -182,12 +183,39 @@
     localparam  ETH_HEAD_LENGTH =   8'd14;
     localparam  IP_HEAD_LENGTH  =   8'd20;    
     localparam  UDP_HEAD_LENGTH =   8'd8;
-    localparam  UDP_MIN_LENGTH  =   8'd26;      //  UDP_HEAD_LENGTH + MIN_DATA_LENGTH 
+    localparam  UDP_MIN_LENGTH  =   8'd26;      //  UDP_HEAD_LENGTH + MIN_DATA_LENGTH
+    localparam  ARP_LENGTH      =   8'd42;      //  include ETH_HEAD_LENGTH
 
- /*-----------------------------------------------------------------------------    
+/*------------------------------------------------------------------------------
+--  send arp
+
+     Destination MAC address     6 octets
+     Source MAC address          6 octets
+     Ethertype (0x0806)          2 octets       14
+
+     HTYPE (1)                   2 octets       ----- ARP_PROTO
+     PTYPE (0x0800)              2 octets
+     HLEN (6)                    1 octets
+     PLEN (4)                    1 octets       20
+
+     OPER                        2 octets       ----- ARP_RLOCAL         
+     SHA Sender MAC              6 octets
+     SPA Sender IP               4 octets       32
+
+     THA Target MAC              6 octets
+     TPA Target IP               4 octets       42
+------------------------------------------------------------------------------*/ 
+    localparam          ARP_TYPE            =   16'h0806;
+    localparam          OPCODE_QUERY        =   16'h0001;
+    localparam          OPCODE_RESPONSE     =   16'h0002;    
+    localparam  [47:0]  ARP_PROTO           =   {16'h0001,16'h0800,8'h06,8'h04};
+    localparam  [95:0]  ARP_QLOCAL          =   {OPCODE_QUERY, LOCAL_MAC, LOCAL_IP};
+    localparam  [95:0]  ARP_RLOCAL          =   {OPCODE_RESPONSE, LOCAL_MAC, LOCAL_IP};    
+
+/*-----------------------------------------------------------------------------    
 // state machine declarations (* fsm_encoding = "one-hot" *)
 //---------------------------------------------------------------------------*/            
-    typedef enum   {IDLE,ETH_HEAD,IP_HEAD,UDP_HEAD,UDP_DATA}    state_t;
+    typedef enum   {IDLE,ETH_HEAD,IP_HEAD,UDP_HEAD,UDP_DATA,ARP}    state_t;
    (* keep="true" *)    state_t udp_state,udp_next;
 
     always_ff @(posedge axi_clk) begin 
@@ -205,16 +233,17 @@
     logic           flag_tx_over    =   '0;
 
     always_ff @(posedge axi_clk) begin 
-       flag_tx_start    <= s_axi_bvalid && s_axi_bready;
+        flag_tx_start    <= s_axi_bvalid && s_axi_bready;
     end
     
     always_comb begin 
         case (udp_state)
-            IDLE        :   udp_next    =   flag_tx_start   ? ETH_HEAD  : IDLE;
+            IDLE        :   udp_next    =   flag_tx_start   ? ETH_HEAD  : (trig_arp_tx ? ARP : IDLE);
             ETH_HEAD    :   udp_next    =   flag_tx_over    ? IP_HEAD   : ETH_HEAD;
             IP_HEAD     :   udp_next    =   flag_tx_over    ? UDP_HEAD  : IP_HEAD;
             UDP_HEAD    :   udp_next    =   flag_tx_over    ? UDP_DATA  : UDP_HEAD;
             UDP_DATA    :   udp_next    =   flag_tx_over    ? IDLE      : UDP_DATA;
+            ARP         :   udp_next    =   flag_tx_over    ? IDLE      : ARP;
             default :       udp_next    =   IDLE;
         endcase
     end 
@@ -222,7 +251,6 @@
 /*------------------------------------------------------------------------------
 --  udp data sum calculate
 ------------------------------------------------------------------------------*/
-
    (* keep="true" *)    logic   [31:0]      udp_datasum     =   '0;
    (* keep="true" *)    logic   [15:0]      udp_data_cnt    =   '0;     //   byte counter
     logic   [15:0]      ip_length       =   '0;
@@ -283,6 +311,7 @@
     logic   [31:0]  ip_checksum     =   '0; 
    (* keep="true" *)    logic   [31:0]  udp_checksum    =   '0;
    (* keep="true" *)    logic   [15:0]  udp_data_len    =   '0; 
+
 
     logic   [7:0]   o_tdata         =   '0;
     logic           o_tvalid        =   '0;
@@ -405,6 +434,47 @@
 
             end // UDP_DATA    
 
+            ARP     : begin
+                    if (octec_cnt == ARP_LENGTH - 1) begin
+                        octec_cnt       <=  0;
+                        flag_tx_over    <=  1;
+                        o_tdata         <=  '0;
+                        o_tvalid        <=  '0;
+                        o_tlast         <=  '0;                                                                                                                      
+                    end
+                    else begin
+                        octec_cnt       <=  octec_cnt + (rgmii_tvalid && rgmii_tready);
+                        flag_tx_over    <=  0;
+
+                        o_tvalid        <=  1;
+                        o_tlast         <=  (octec_cnt == 40);
+                        case (octec_cnt)
+                                16'd00  :   o_tdata   <=  rgmii_tready ? target_mac[39:32] : target_mac[47:40];
+                                16'd01  :   o_tdata   <=  target_mac[31:24];
+                                16'd02  :   o_tdata   <=  target_mac[23:16];
+                                16'd03  :   o_tdata   <=  target_mac[15:08];
+                                16'd04  :   o_tdata   <=  target_mac[07:00];
+                                16'd05  :   o_tdata   <=  LOCAL_MAC[47:40];
+                                16'd06  :   o_tdata   <=  LOCAL_MAC[39:32];
+                                16'd07  :   o_tdata   <=  LOCAL_MAC[31:24];
+                                16'd08  :   o_tdata   <=  LOCAL_MAC[23:16];
+                                16'd09  :   o_tdata   <=  LOCAL_MAC[15:08];
+                                16'd10  :   o_tdata   <=  LOCAL_MAC[07:00];
+                                16'd11  :   o_tdata   <=  ARP_TYPE[15:08];
+                                16'd12  :   o_tdata   <=  ARP_TYPE[07:00];                                        
+                            default : begin
+                                if (octec_cnt < 19)
+                                    o_tdata <=  ARP_PROTO[8*(18-octec_cnt) +: 8];
+                                else if (octec_cnt < 31)
+                                    o_tdata <=  ARP_RLOCAL[8*(30-octec_cnt) +: 8];
+                                else if (octec_cnt < 37) 
+                                    o_tdata <=  target_mac[8*(36-octec_cnt) +: 8];
+                                else
+                                    o_tdata <=  target_ip[8*(40-octec_cnt) +: 8];
+                            end
+                        endcase  
+                    end                  
+            end
             default : begin
                     octec_cnt    <=  '0;
                     byte_cnt     <=  {AXI_SIZE{1'b1}} -1;
@@ -502,4 +572,4 @@
         endcase
     end 
 
- endmodule : udp_tx
+ endmodule : eth_tx
