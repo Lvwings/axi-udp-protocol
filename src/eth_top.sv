@@ -20,7 +20,10 @@
         parameter C_AXI_DATA_WIDTH          =   64,               // Width of the AXI write and read data
         parameter C_AXI_ID_WIDTH            =   3,
         parameter C_BEGIN_ADDRESS           =   0,                // Start address of the address map
-        parameter C_END_ADDRESS             =   32'hFFFF_FFFF     // End address of the address map   
+        parameter C_END_ADDRESS             =   32'hFFFF_FFFF,    // End address of the address map
+        // FIFO DEPTH
+        parameter TX_FIFO_BYTE_DEPTH        =   2048,
+        parameter RX_FIFO_BYTE_DEPTH        =   2048           
      )
      (
             input                               axi_clk,
@@ -145,7 +148,8 @@
             .C_AXI_ADDR_WIDTH(C_AXI_ADDR_WIDTH),
             .C_AXI_DATA_WIDTH(C_AXI_DATA_WIDTH),
             .C_BEGIN_ADDRESS(C_BEGIN_ADDRESS),
-            .C_END_ADDRESS(C_END_ADDRESS)
+            .C_END_ADDRESS(C_END_ADDRESS),
+            .RX_FIFO_BYTE_DEPTH(RX_FIFO_BYTE_DEPTH)
         ) inst_eth_rx (
             .axi_clk       (axi_clk),
             .axi_rstn      (axi_rstn),
@@ -178,7 +182,6 @@
             .target_ip     (target_ip),
             .target_mac    (target_mac)
         );
- 
                
     eth_tx #(
             .LOCAL_IP(LOCAL_IP),
@@ -188,7 +191,8 @@
             .C_AXI_ADDR_WIDTH(C_AXI_ADDR_WIDTH),
             .C_AXI_DATA_WIDTH(C_AXI_DATA_WIDTH),
             .C_BEGIN_ADDRESS(C_BEGIN_ADDRESS),
-            .C_END_ADDRESS(C_END_ADDRESS)
+            .C_END_ADDRESS(C_END_ADDRESS),
+            .TX_FIFO_BYTE_DEPTH(TX_FIFO_BYTE_DEPTH)
         ) inst_eth_tx (
             .axi_clk       (axi_clk),
             .axi_rstn      (axi_rstn),
@@ -220,5 +224,6 @@
             .target_ip     (target_ip),
             .target_mac    (target_mac)
         );
+
  
  endmodule : eth_top

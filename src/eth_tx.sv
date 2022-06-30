@@ -19,7 +19,10 @@
         parameter C_AXI_ADDR_WIDTH          =   32,               // This is AXI address width for all         // SI and MI slots
         parameter C_AXI_DATA_WIDTH          =   64,               // Width of the AXI write and read data
         parameter C_BEGIN_ADDRESS           =   0,                // Start address of the address map
-        parameter C_END_ADDRESS             =   32'hFFFF_FFFF     // End address of the address map    
+        parameter C_END_ADDRESS             =   32'hFFFF_FFFF,     // End address of the address map,
+        // FIFO DEPTH
+        parameter TX_FIFO_BYTE_DEPTH        =   1024
+
      )(
         input                               axi_clk,
         input                               axi_rstn,    
@@ -138,7 +141,7 @@
 ------------------------------------------------------------------------------*/         
 
     //  rx fifo
-    localparam  FIFO_DEPTH  = 1024*8/C_AXI_DATA_WIDTH;  //  udp length < 1500-byte  
+    localparam  FIFO_DEPTH  = TX_FIFO_BYTE_DEPTH*8/C_AXI_DATA_WIDTH;  //  udp length < 1500-byte  
     logic   [C_AXI_DATA_WIDTH-1 : 0]    fifo_tdata;
     logic                               fifo_tvalid;
     logic                               fifo_tready;
@@ -216,7 +219,7 @@
 // state machine declarations (* fsm_encoding = "one-hot" *)
 //---------------------------------------------------------------------------*/            
     typedef enum   {IDLE,ETH_HEAD,IP_HEAD,UDP_HEAD,UDP_DATA,ARP}    state_t;
-   (* keep="true" *)    state_t udp_state,udp_next;
+    state_t udp_state,udp_next;
 
     always_ff @(posedge axi_clk) begin 
         if(!local_rstn) begin
@@ -251,12 +254,12 @@
 /*------------------------------------------------------------------------------
 --  udp data sum calculate
 ------------------------------------------------------------------------------*/
-   (* keep="true" *)    logic   [31:0]      udp_datasum     =   '0;
-   (* keep="true" *)    logic   [15:0]      udp_data_cnt    =   '0;     //   byte counter
+    logic   [31:0]      udp_datasum     =   '0;
+    logic   [15:0]      udp_data_cnt    =   '0;     //   byte counter
     logic   [15:0]      ip_length       =   '0;
-   (* keep="true" *)    logic   [15:0]      udp_length      =   '0;
+    logic   [15:0]      udp_length      =   '0;
     logic   [15:0]      ip_length_r     =   '0;
-   (* keep="true" *)    logic   [15:0]      udp_length_r    =   '0;  
+    logic   [15:0]      udp_length_r    =   '0;  
 
     localparam  WORD_SIZE   =   (C_AXI_DATA_WIDTH >> 4);
 
@@ -306,11 +309,11 @@
 /*------------------------------------------------------------------------------
 --  eth head 
 ------------------------------------------------------------------------------*/
-   (* keep="true" *)    logic   [15:0]  octec_cnt       =   '0;     //  byte counter
+    logic   [15:0]  octec_cnt       =   '0;     //  byte counter
     logic   [15:0]  ip_identify     =   '0;
     logic   [31:0]  ip_checksum     =   '0; 
-   (* keep="true" *)    logic   [31:0]  udp_checksum    =   '0;
-   (* keep="true" *)    logic   [15:0]  udp_data_len    =   '0; 
+    logic   [31:0]  udp_checksum    =   '0;
+    logic   [15:0]  udp_data_len    =   '0; 
 
 
     logic   [7:0]   o_tdata         =   '0;
@@ -541,7 +544,7 @@
     source ip (4 octets) destination ip (4 octets) 0 (1 octet) 11 (1 octet) udp length (2 octet)
 ------------------------------------------------------------------------------*/
     localparam  [31:0]  UDP_LOCAL_SUM   =   LOCAL_IP[31:16] + LOCAL_IP[15:0] + {8'h00,8'h11} + LOCAL_SP + LOCAL_DP;
-   (* keep="true" *)    logic       [31:0]  udp_checkdata [2:0];
+    logic       [31:0]  udp_checkdata [2:0];
 
 
     always_ff @(posedge axi_clk) begin 

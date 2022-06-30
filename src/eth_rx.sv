@@ -19,7 +19,9 @@
         parameter C_AXI_ADDR_WIDTH          =   32,               // This is AXI address width for all         // SI and MI slots
         parameter C_AXI_DATA_WIDTH          =   64,               // Width of the AXI write and read data
         parameter C_BEGIN_ADDRESS           =   0,                // Start address of the address map
-        parameter C_END_ADDRESS             =   32'hFFFF_FFFF     // End address of the address map    
+        parameter C_END_ADDRESS             =   32'hFFFF_FFFF,    // End address of the address map  
+        // FIFO DEPTH
+        parameter RX_FIFO_BYTE_DEPTH        =   1024   
      )(
 
             input                               axi_clk,
@@ -113,7 +115,7 @@
     --  rgmii rx
     ------------------------------------------------------------------------------*/
         //  rx fifo
-        localparam  FIFO_DEPTH  = 2048;  //  udp length < 1500-byte  
+        localparam  FIFO_DEPTH  = RX_FIFO_BYTE_DEPTH;  //  udp length < 1500-byte  
         logic   [8-1 : 0]   fifo_tdata;
         logic               fifo_tvalid;
         logic               fifo_tready =   '0;
@@ -150,7 +152,7 @@
     --  eth receive state parameter
     ------------------------------------------------------------------------------*/    
         typedef enum {IDLE,ETH_HEADER,IP_HEADER,UDP_HEADER,ARP,AXI_ADDR,AXI_DATA,AXI_RESPONSE} eth_state;
-(* keep="true" *)        eth_state rx_state,rx_next;
+        eth_state rx_state,rx_next;
 
         always_ff @(posedge axi_clk) begin 
             if(!local_rstn) begin
@@ -163,10 +165,10 @@
     /*------------------------------------------------------------------------------
     --  state jump
     ------------------------------------------------------------------------------*/
-(* keep="true" *)        logic           flag_rx_start   =   '0;
-(* keep="true" *)        logic           flag_rx_err     =   '0;     //  not target frame
-(* keep="true" *)        logic           flag_arp        =   '0;
-(* keep="true" *)        logic           flag_rx_over    =   '0;
+        logic           flag_rx_start   =   '0;
+        logic           flag_rx_err     =   '0;     //  not target frame
+        logic           flag_arp        =   '0;
+        logic           flag_rx_over    =   '0;
 
         always_ff @(posedge axi_clk) begin
             flag_rx_start   <= fifo_tvalid && !flag_rx_err;
@@ -225,7 +227,7 @@
     /*------------------------------------------------------------------------------
     --  reveice data
     ------------------------------------------------------------------------------*/
-(* keep="true" *)        logic   [15:0]  rx_cnt  =   '0;
+        logic   [15:0]  rx_cnt  =   '0;
         //  eth header
         logic   [15:0]  eth_type     =   '0;     //  收到的帧类型
         logic   [47:0]  eth_da_mac   =   '0,
@@ -245,12 +247,12 @@
 
         logic   [31:0]  axi_awaddr      =   '0;
         //  arp
-(* keep="true" *)        logic   [47:0]  arp_sa_mac      =   '0;      
-(* keep="true" *)        logic   [31:0]  arp_sa_ip       =   '0,
+        logic   [47:0]  arp_sa_mac      =   '0;      
+        logic   [31:0]  arp_sa_ip       =   '0,
                         arp_da_ip       =   '0;        
         logic   [15:0]  arp_opcode      =   '0;
-(* keep="true" *)        logic           o_trig_arp_tx   =   '0;
-(* keep="true" *)        logic   [7:0]   watch_dog   =   '0;
+        logic           o_trig_arp_tx   =   '0;
+        logic   [7:0]   watch_dog       =   '0;
 
         assign  target_ip   =   arp_sa_ip;
         assign  target_mac  =   arp_sa_mac;
