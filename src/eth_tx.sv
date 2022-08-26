@@ -324,6 +324,20 @@
     assign          rgmii_tvalid    =   o_tvalid;
     assign          rgmii_tlast     =   o_tlast;
 
+    //  ip_identify
+    always_ff @(posedge axi_clk) begin
+        if (!axi_rstn) begin
+            ip_identify <=  '0;
+        end
+        else begin
+            if (s_axi_bvalid && s_axi_bready)
+                ip_identify <=  ip_identify + 1;
+            else
+                ip_identify <=  ip_identify;
+        end
+    end
+    
+
     logic   [AXI_SIZE-1 : 0]    byte_cnt    =   '0;
 
     always_ff @(posedge axi_clk) begin 
