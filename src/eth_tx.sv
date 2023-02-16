@@ -18,8 +18,7 @@
         // AXI information          
         parameter C_AXI_ADDR_WIDTH          =   32,               // This is AXI address width for all         // SI and MI slots
         parameter C_AXI_DATA_WIDTH          =   64,               // Width of the AXI write and read data
-        parameter C_BEGIN_ADDRESS           =   0,                // Start address of the address map
-        parameter C_END_ADDRESS             =   32'hFFFF_FFFF,     // End address of the address map,
+        parameter C_AXI_ID_WIDTH            =   3,
         // FIFO DEPTH
         parameter TX_FIFO_BYTE_DEPTH        =   1024
 
@@ -28,32 +27,48 @@
         input                               axi_rstn,    
     // AXI write address channel signals
         output                              s_axi_awready,   // Indicates slave is ready to accept a 
-        input [C_AXI_ADDR_WIDTH-1:0]        s_axi_awaddr,    // Write address
+        input   [C_AXI_ID_WIDTH-1:0]        s_axi_awid,      // Write ID
+        input   [C_AXI_ADDR_WIDTH-1:0]      s_axi_awaddr,    // Write address
+        input   [7:0]                       s_axi_awlen,     // Write Burst Length
+        input   [2:0]                       s_axi_awsize,    // Write Burst size
+        input   [1:0]                       s_axi_awburst,   // Write Burst type
+        input   [1:0]                       s_axi_awlock,    // Write lock type
+        input   [3:0]                       s_axi_awcache,   // Write Cache type
+        input   [2:0]                       s_axi_awprot,    // Write Protection type
         input                               s_axi_awvalid,   // Write address valid
-      
+
     // AXI write data channel signals
         output                              s_axi_wready,    // Write data ready
-        input [C_AXI_DATA_WIDTH-1:0]        s_axi_wdata,     // Write data
-        input [C_AXI_DATA_WIDTH/8-1:0]      s_axi_wstrb,     // Write strobes
+        input   [C_AXI_DATA_WIDTH-1:0]      s_axi_wdata,     // Write data
+        input   [C_AXI_DATA_WIDTH/8-1:0]    s_axi_wstrb,     // Write strobes
         input                               s_axi_wlast,     // Last write transaction   
         input                               s_axi_wvalid,    // Write valid
-      
+
     // AXI write response channel signals
+        output  [C_AXI_ID_WIDTH-1:0]        s_axi_bid,       // Response ID
         output  [1:0]                       s_axi_bresp,     // Write response
         output                              s_axi_bvalid,    // Write reponse valid
         input                               s_axi_bready,    // Response ready
-      
+
     // AXI read address channel signals
         output                              s_axi_arready,   // Read address ready
-        input [C_AXI_ADDR_WIDTH-1:0]        s_axi_araddr,    // Read address
+        input   [C_AXI_ID_WIDTH-1:0]        s_axi_arid,      // Read ID
+        input   [C_AXI_ADDR_WIDTH-1:0]      s_axi_araddr,    // Read address
+        input   [7:0]                       s_axi_arlen,     // Read Burst Length
+        input   [2:0]                       s_axi_arsize,    // Read Burst size
+        input   [1:0]                       s_axi_arburst,   // Read Burst type
+        input   [1:0]                       s_axi_arlock,    // Read lock type
+        input   [3:0]                       s_axi_arcache,   // Read Cache type
+        input   [2:0]                       s_axi_arprot,    // Read Protection type
         input                               s_axi_arvalid,   // Read address valid
-      
+
     // AXI read data channel signals   
+        output  [C_AXI_ID_WIDTH-1:0]        s_axi_rid,      // Response ID
         output  [1:0]                       s_axi_rresp,    // Read response
         output                              s_axi_rvalid,   // Read reponse valid
         output  [C_AXI_DATA_WIDTH-1:0]      s_axi_rdata,    // Read data
         output                              s_axi_rlast,    // Read last
-        input                               s_axi_rready,    // Read Response ready
+        input                               s_axi_rready,    // Read Response ready 
 
     // AXIS TX RGMII
         output  [7:0]                       rgmii_tdata,
@@ -68,7 +83,14 @@
         input   [47:0]                      target_mac         
      
  );
-    
+/*------------------------------------------------------------------------------
+--  reset localization
+------------------------------------------------------------------------------*/
+    logic   local_rstn   =   '0;
+
+    always_ff @(posedge axi_clk) begin
+        local_rstn <= axi_rstn;
+    end    
 /*-----------------------------------------------------------------------------    
 // AXI Internal logicister and wire declarations
 //---------------------------------------------------------------------------*/            
@@ -126,15 +148,6 @@
 
     //  AXI_ADDR_INC : axi address increment associate with data width
     localparam  [7:0]   AXI_ADDR_INC    =   C_AXI_DATA_WIDTH/8;
-
-/*------------------------------------------------------------------------------
---  reset localization
-------------------------------------------------------------------------------*/
-    logic   local_rstn   =   '0;
-
-    always_ff @(posedge axi_clk) begin
-        local_rstn <= axi_rstn;
-    end
 
 /*------------------------------------------------------------------------------
 --  receive data from axi-lite
@@ -323,6 +336,7 @@
     assign          rgmii_tdata     =   o_tdata;
     assign          rgmii_tvalid    =   o_tvalid;
     assign          rgmii_tlast     =   o_tlast;
+    assign          rgmii_tuser     =   '0;
 
     //  ip_identify
     always_ff @(posedge axi_clk) begin

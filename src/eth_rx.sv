@@ -18,42 +18,58 @@
         // AXI information          
         parameter C_AXI_ADDR_WIDTH          =   32,               // This is AXI address width for all         // SI and MI slots
         parameter C_AXI_DATA_WIDTH          =   64,               // Width of the AXI write and read data
-        parameter C_BEGIN_ADDRESS           =   0,                // Start address of the address map
-        parameter C_END_ADDRESS             =   32'hFFFF_FFFF,    // End address of the address map  
+        parameter C_AXI_ID_WIDTH            =   3,
+        parameter C_AXI_BURST_TYPE          =   2'b00,            // 00 : FIXED, 01 : INCR , 10 : WRAP
         // FIFO DEPTH
         parameter RX_FIFO_BYTE_DEPTH        =   1024   
      )(
 
             input                               axi_clk,
             input                               axi_rstn,
-     // AXI write address channel signals
+        // AXI write address channel signals
             input                               m_axi_awready, // Indicates slave is ready to accept a 
+            output [C_AXI_ID_WIDTH-1:0]         m_axi_awid,    // Write ID
             output [C_AXI_ADDR_WIDTH-1:0]       m_axi_awaddr,  // Write address
+            output [7:0]                        m_axi_awlen,   // Write Burst Length
+            output [2:0]                        m_axi_awsize,  // Write Burst size
+            output [1:0]                        m_axi_awburst, // Write Burst type
+            output [1:0]                        m_axi_awlock,  // Write lock type
+            output [3:0]                        m_axi_awcache, // Write Cache type
+            output [2:0]                        m_axi_awprot,  // Write Protection type
             output                              m_axi_awvalid, // Write address valid
-       
-     // AXI write data channel signals
-            input                               m_axi_wready,   // Write data ready
+          
+        // AXI write data channel signals
+            input                               m_axi_wready,  // Write data ready
             output [C_AXI_DATA_WIDTH-1:0]       m_axi_wdata,    // Write data
             output [C_AXI_DATA_WIDTH/8-1:0]     m_axi_wstrb,    // Write strobes
             output                              m_axi_wlast,    // Last write transaction   
             output                              m_axi_wvalid,   // Write valid
-       
-     // AXI write response channel signals
+          
+        // AXI write response channel signals
+            input  [C_AXI_ID_WIDTH-1:0]         m_axi_bid,     // Response ID
             input  [1:0]                        m_axi_bresp,   // Write response
             input                               m_axi_bvalid,  // Write reponse valid
             output                              m_axi_bready,  // Response ready
-       
-     // AXI read address channel signals
+          
+        // AXI read address channel signals
             input                               m_axi_arready,     // Read address ready
+            output [C_AXI_ID_WIDTH-1:0]         m_axi_arid,        // Read ID
             output [C_AXI_ADDR_WIDTH-1:0]       m_axi_araddr,      // Read address
+            output [7:0]                        m_axi_arlen,       // Read Burst Length
+            output [2:0]                        m_axi_arsize,      // Read Burst size
+            output [1:0]                        m_axi_arburst,     // Read Burst type
+            output [1:0]                        m_axi_arlock,      // Read lock type
+            output [3:0]                        m_axi_arcache,     // Read Cache type
+            output [2:0]                        m_axi_arprot,      // Read Protection type
             output                              m_axi_arvalid,     // Read address valid
-       
-     // AXI read data channel signals   
+          
+        // AXI read data channel signals   
+            input  [C_AXI_ID_WIDTH-1:0]         m_axi_rid,     // Response ID
             input  [1:0]                        m_axi_rresp,   // Read response
             input                               m_axi_rvalid,  // Read reponse valid
             input  [C_AXI_DATA_WIDTH-1:0]       m_axi_rdata,   // Read data
             input                               m_axi_rlast,   // Read last
-            output                              m_axi_rready,   // Read Response ready
+            output                              m_axi_rready,   // Read Response ready 
 
         // AXIS RX RGMII
             input                               rgmii_rxc,
@@ -81,11 +97,21 @@
         endfunction 
     
         //    AXI_SIZE : the data bytes of each burst
-        localparam    [2:0]    AXI_SIZE        =    clogb2(C_AXI_DATA_WIDTH/8-1);
+        localparam    [2:0]    AXI_SIZE         =   clogb2(C_AXI_DATA_WIDTH/8-1);
     
         //    AXI_ADDR_INC : axi address increment associate with data width
-        localparam    [7:0]    AXI_ADDR_INC    =    C_AXI_DATA_WIDTH/8;
+        localparam    [7:0]    AXI_ADDR_INC     =   C_AXI_DATA_WIDTH/8;
+        localparam             AXI_LEN_SHIFT    =   clogb2(AXI_ADDR_INC-1);
 
+        assign  m_axi_awsize    =   AXI_SIZE;
+        assign  m_axi_wstrb     =   {(C_AXI_DATA_WIDTH/8){1'b1}};
+        assign  m_axi_awburst   =   C_AXI_BURST_TYPE;
+
+        // Not supported and hence assigned zeros
+        assign  m_axi_awlock    =   '0;
+        assign  m_axi_awcache   =   '0;
+        assign  m_axi_awprot    =   '0;   
+        assign  m_axi_awid      =   '0;
     /*------------------------------------------------------------------------------
     --  reset localization
     ------------------------------------------------------------------------------*/
@@ -116,6 +142,8 @@
     ------------------------------------------------------------------------------*/
         //  rx fifo
         localparam  FIFO_DEPTH  = RX_FIFO_BYTE_DEPTH;  //  udp length < 1500-byte  
+        localparam  COUNT_WIDTH = clogb2(FIFO_DEPTH/8-1);
+
         logic   [8-1 : 0]   fifo_tdata;
         logic               fifo_tvalid;
         logic               fifo_tready =   '0;
@@ -127,27 +155,29 @@
             .RELATED_CLOCKS (0),                    //  Specifies if the s_aclk and m_aclk are related having the same source but different clock ratios. Default value = 0 
             .FIFO_DEPTH     (FIFO_DEPTH),           //  Range: 16 - 4194304. Default value = 2048
             .TDATA_WIDTH    (8),                    //  Range: 8 - 2048. Default value = 32        
-            .PACKET_FIFO    ("false")               //  "false" or "true". Default value = "false"      
+            .PACKET_FIFO    ("false"),              //  "false" or "true". Default value = "false" 
+            .SIM_ASSERT_CHK (1),                    //  DECIMAL; 0=disable simulation messages, 1=enable simulation messages
+            .WR_DATA_COUNT_WIDTH(COUNT_WIDTH)       //  Range: 1 - 23. Default value = 1.     
        )
        udp_tx_fifo (
         //  axis slave
-            .s_aclk         (rgmii_rxc),                        
-            .s_aresetn      (rgmii_cdc_rstn),                 
-            .s_axis_tdata   (rgmii_rdata), 
-            .s_axis_tvalid  (rgmii_rvalid), 
-            .s_axis_tready  (rgmii_rready), 
-            .s_axis_tlast   (rgmii_rlast),
-            .s_axis_tuser   (rgmii_ruser), 
+            .s_aclk             (rgmii_rxc),                        
+            .s_aresetn          (rgmii_cdc_rstn),                 
+            .s_axis_tdata       (rgmii_rdata), 
+            .s_axis_tvalid      (rgmii_rvalid), 
+            .s_axis_tready      (rgmii_rready), 
+            .s_axis_tlast       (rgmii_rlast),
+            .s_axis_tuser       (rgmii_ruser), 
 
         //  axis master    
-            .m_aclk         (axi_clk),                                                                      
-            .m_axis_tdata   (fifo_tdata),           
-            .m_axis_tvalid  (fifo_tvalid),
-            .m_axis_tready  (fifo_tready), 
-            .m_axis_tlast   (fifo_tlast), 
-            .m_axis_tuser   (fifo_tuser)
+            .m_aclk             (axi_clk),                                                                      
+            .m_axis_tdata       (fifo_tdata),           
+            .m_axis_tvalid      (fifo_tvalid),
+            .m_axis_tready      (fifo_tready), 
+            .m_axis_tlast       (fifo_tlast), 
+            .m_axis_tuser       (fifo_tuser)
        );
-
+       
     /*------------------------------------------------------------------------------
     --  eth receive state parameter
     ------------------------------------------------------------------------------*/    
@@ -263,6 +293,7 @@
     // AXI m_write address channel signals    
         logic   [C_AXI_ADDR_WIDTH-1:0]      m_awaddr    =    '0;
         logic                               m_awvalid   =    '0;
+        logic   [7:0]                       m_awlen     =    '0;
     
     // AXI m_write data channel signals    
         logic   [C_AXI_DATA_WIDTH-1:0]      m_wdata     =    '0;
@@ -280,12 +311,12 @@
         logic                               m_rready    =    '0;
 
         assign    m_axi_awaddr          =   m_awaddr;
-        assign    m_axi_awvalid         =   m_awvalid;        
+        assign    m_axi_awvalid         =   m_awvalid;  
+        assign    m_axi_awlen           =   m_awlen;      
         assign    m_axi_wdata           =   m_wdata;
-        assign    m_axi_wstrb           =   {(C_AXI_DATA_WIDTH/8){1'b1}};
         assign    m_axi_wlast           =   m_wlast;
         assign    m_axi_wvalid          =   m_wvalid;    
-        assign    m_axi_bready          =   m_bready;
+        assign    m_axi_bready          =   '1;
 
         logic   [AXI_SIZE-1 : 0]            byte_cnt    =   {AXI_SIZE{1'b1}} -1;
     /*------------------------------------------------------------------------------
@@ -429,9 +460,10 @@
                 end  
 
                 ARP : begin
-                    if (fifo_tlast) begin
+                    if (rx_cnt == ARP_LENGTH) begin
                         if (arp_opcode == ARP_REQUEST && arp_da_ip == LOCAL_IP) begin // ARP 请求 + 目的IP匹配
                             flag_rx_over    <=  1;
+                            flag_rx_err     <=  0; 
                             o_trig_arp_tx   <=  1;
                         end
                         else begin
@@ -476,11 +508,13 @@
                 AXI_ADDR : begin
                     flag_rx_over<=  0;
                     m_awaddr    <=  axi_awaddr;
+                    m_awlen     <=  (udp_data_len-1) >> AXI_LEN_SHIFT;
                     m_awvalid   <=  1;
                 end // AXI_ADDR 
 
                 AXI_DATA : begin
                     m_awaddr    <=  '0;
+                    m_awlen     <=  '0;
                     m_awvalid   <=  '0;
 
                     //  considering if wready is asserted according to wvalid, fifo_tready should wait for handshark
@@ -551,6 +585,7 @@
                     arp_da_ip     <=  '0;
                     arp_opcode    <=  '0;
                     m_awaddr      <=  '0;
+                    m_awlen       <=  '0;
                     m_awvalid     <=  '0;
                     m_wdata       <=  '0; 
                     m_wlast       <=  '0;
