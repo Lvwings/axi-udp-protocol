@@ -554,7 +554,8 @@
             ETH_HEAD    : begin
                    case (octec_cnt)                        
                        16'h3,16'h4,16'h5  :   ip_checksum <=  ip_checksum + ip_checkdata[octec_cnt-3];
-                       16'h6  :     ip_checksum <=  ~(ip_checksum[31:16] + ip_checksum[15:0]);                       
+                       16'h6  :     ip_checksum <=  ip_checksum[31:16] + ip_checksum[15:0];   
+                       16'h7  :     ip_checksum <=  ~(ip_checksum[31:16] + ip_checksum[15:0]);                     
                        default :   ip_checksum <=  ip_checksum;
                    endcase                    
             end // ETH_HEAD    
@@ -592,7 +593,8 @@
             ETH_HEAD : begin
                     case (octec_cnt)
                         16'h3,16'h4,16'h5  : udp_checksum <=  udp_checksum + udp_checkdata[octec_cnt-3]; 
-                        16'h6  :   udp_checksum <=  ~(udp_checksum[31:16] + udp_checksum[15:0]);                       
+                        16'h6  :   udp_checksum <=  udp_checksum[31:16] + udp_checksum[15:0];    
+                        16'h7  :   udp_checksum <=  ~(udp_checksum[31:16] + udp_checksum[15:0]);                    
                         default :   udp_checksum <=  udp_checksum;
                     endcase                                         
             end // ETH_HEAD 
